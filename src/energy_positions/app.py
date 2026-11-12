@@ -1,6 +1,6 @@
 """The application.
 
-    uv run uvicorn energy_positions.app:app
+    uv run uvicorn energy_positions.app:app --port 8048
 
 Uvicorn is the server; this module hands it the ASGI app to serve.
 """

@@ -55,20 +55,21 @@ uv run python scripts/apply_sql.py sql/schema.sql
 uv run python scripts/seed.py
 ```
 
-Start the API:
+Start the API. The port is 8048 and not Uvicorn's default of 8000, because 8000 is
+often taken already; on the machine this was written on, a Windows service holds it:
 
 ```
-uv run uvicorn energy_positions.app:app
+uv run uvicorn energy_positions.app:app --port 8048
 ```
 
-Then open <http://127.0.0.1:8000/docs> for the OpenAPI page, where every endpoint
+Then open <http://127.0.0.1:8048/docs> for the OpenAPI page, where every endpoint
 can be tried. Or, from a second command prompt:
 
 ```
-curl "http://127.0.0.1:8000/portfolios/7/positions?settlement_date=2026-10-25"
-curl "http://127.0.0.1:8000/portfolios/7/positions/current"
-curl "http://127.0.0.1:8000/portfolios/7/daily?from=2026-10-24&to=2026-10-26"
-curl -X POST http://127.0.0.1:8000/trades -H "Content-Type: application/json" -d "{\"portfolio_id\": 7, \"period_start\": \"2026-10-25T01:00:00Z\", \"volume_mwh\": \"12.500\", \"price\": \"84.20\"}"
+curl "http://127.0.0.1:8048/portfolios/7/positions?settlement_date=2026-10-25"
+curl "http://127.0.0.1:8048/portfolios/7/positions/current"
+curl "http://127.0.0.1:8048/portfolios/7/daily?from=2026-10-24&to=2026-10-26"
+curl -X POST http://127.0.0.1:8048/trades -H "Content-Type: application/json" -d "{\"portfolio_id\": 7, \"period_start\": \"2026-10-25T01:00:00Z\", \"volume_mwh\": \"12.500\", \"price\": \"84.20\"}"
 ```
 
 Stop the API with Ctrl+C. Stop PostgreSQL, keeping its data, with

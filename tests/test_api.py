@@ -127,6 +127,21 @@ async def test_positions_keeps_the_two_one_o_clocks_apart(
     }
 
 
+async def test_positions_run_from_the_first_period_of_the_uk_day_to_the_last(
+    client: AsyncClient, database: asyncpg.Connection
+) -> None:
+    # A summer day starts at 23:00 UTC the evening before, and ends at 23:00 UTC.
+    first, last = (SettlementPeriod.from_settlement(SUMMER, n) for n in (1, 48))
+    await add_trade(database, PORTFOLIO, first, "1.000")
+    await add_trade(database, PORTFOLIO, last, "2.000")
+    await add_trade(database, PORTFOLIO, first.previous(), "40.000")  # the day before's last period
+    await add_trade(database, PORTFOLIO, last.next(), "80.000")  # the day after's first
+
+    response = await client.get(f"/portfolios/{PORTFOLIO}/positions", params={"settlement_date": "2026-06-15"})
+
+    assert [row["net_mwh"] for row in response.json()] == ["1.000"] + ["0.000"] * 46 + ["2.000"]
+
+
 # --- GET /portfolios/{id}/daily?from=&to= ------------------------------------------
 
 

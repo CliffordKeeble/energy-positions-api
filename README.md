@@ -39,7 +39,9 @@ docker compose up -d --wait
 ```
 
 Install Python and the dependencies. uv reads the Python version from
-`.python-version` and fetches it if it is not there:
+`.python-version` and fetches it if it is not there. The version is pinned to 3.14
+because, when this was written, some of the dependencies had no Windows wheels for
+3.15 yet:
 
 ```
 uv sync

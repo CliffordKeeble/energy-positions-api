@@ -81,8 +81,8 @@ cheaper, and by roughly how much, and nothing else.
   have to be true for the index to be enough?
 - `GET /portfolios/{id}/daily` has a similar `WHERE` clause. Does your index help
   it?
-- What does the index cost? Run the seed again with the index in place and compare
-  the time it reports.
+- What does the index cost? Ask PostgreSQL how big it is beside the table it
+  serves (`pg_relation_size`), and say what has to happen to it on every insert.
 
 ---
 

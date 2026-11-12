@@ -43,8 +43,9 @@ def _local_midnight_utc(day: date) -> datetime:
     return datetime(day.year, day.month, day.day, tzinfo=LONDON).astimezone(UTC)
 
 
-class _BothFaces(TypedDict):
-    """How a period is written to JSON: the label and the identity together."""
+class LabelledSettlementPeriod(TypedDict):
+    """A settlement period as it is written to JSON, showing both faces: the business
+    label (settlement date and period number) and the identity (the UTC start)."""
 
     settlement_date: date
     period: int
@@ -135,7 +136,7 @@ class SettlementPeriod:
 
     # --- Pydantic -----------------------------------------------------------------
 
-    def _both_faces(self) -> _BothFaces:
+    def _both_faces(self) -> LabelledSettlementPeriod:
         return {
             "settlement_date": self.settlement_date,
             "period": self.number,
@@ -161,7 +162,7 @@ class SettlementPeriod:
                 [core_schema.is_instance_schema(cls), from_instant]
             ),
             serialization=core_schema.plain_serializer_function_ser_schema(
-                cls._both_faces, return_schema=handler.generate_schema(_BothFaces)
+                cls._both_faces, return_schema=handler.generate_schema(LabelledSettlementPeriod)
             ),
         )
 

@@ -1,0 +1,25 @@
+# PostgreSQL 17 for the demo. A local development database: the user, password and
+# database name below are throwaway values, and the port is bound to this machine only.
+#
+# Host port 55432, so it cannot clash with a PostgreSQL installed on 5432.
+
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: positions
+      POSTGRES_PASSWORD: positions
+      POSTGRES_DB: positions
+    ports:
+      - "127.0.0.1:55432:5432"
+    shm_size: 256mb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U positions -d positions"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:

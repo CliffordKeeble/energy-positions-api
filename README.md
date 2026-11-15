@@ -2,6 +2,9 @@
 
 [![ci](https://github.com/CliffordKeeble/energy-positions-api/actions/workflows/ci.yml/badge.svg)](https://github.com/CliffordKeeble/energy-positions-api/actions/workflows/ci.yml)
 
+**Live:** https://energy-positions-api.politerock-e062906b.uksouth.azurecontainerapps.io/ (synthetic data; it sleeps when nobody is using it, so the first
+request after a quiet spell can take up to 30 seconds; see [Run it live](#run-it-live))
+
 A small API that answers one question: what is a portfolio's net energy position in
 each half-hour settlement period of a day in Great Britain?
 
@@ -107,7 +110,7 @@ a service container. The badge at the top is its latest result on `main`.
 
 ## Run it live
 
-**Live address:** _not deployed yet_ (`https://<app>.<environment>.uksouth.azurecontainerapps.io`)
+**Live address:** https://energy-positions-api.politerock-e062906b.uksouth.azurecontainerapps.io/
 
 ### What runs where
 
@@ -119,7 +122,9 @@ a service container. The badge at the top is its latest result on `main`.
   package is public: after the first publish, open it from the repository's
   Packages, and if it says Private, change its visibility to Public.
 - **The database** is PostgreSQL on Neon's free plan, which also scales to nothing
-  when idle.
+  when idle. The live project runs **PostgreSQL 18**, Neon's default when it was
+  created; the tests, CI and `compose.yaml` use 17. The schema and the full seed ran
+  unchanged on 18.
 
 Both sleep when nobody is using them, so **the first request after a quiet spell can
 take up to 30 seconds** while they wake. Locally the container answers in under

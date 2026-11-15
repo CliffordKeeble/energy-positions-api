@@ -1,5 +1,7 @@
 # energy-positions-api
 
+[![ci](https://github.com/CliffordKeeble/energy-positions-api/actions/workflows/ci.yml/badge.svg)](https://github.com/CliffordKeeble/energy-positions-api/actions/workflows/ci.yml)
+
 A small API that answers one question: what is a portfolio's net energy position in
 each half-hour settlement period of a day in Great Britain?
 
@@ -99,6 +101,123 @@ The database tests use a database of their own, `positions_test`, which they cre
 on the same server. They never touch the seeded data, so they give the same result
 whether or not the seed has been run.
 
+The same suite runs on GitHub for every pull request and every push to `main`
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), against PostgreSQL 17 in
+a service container. The badge at the top is its latest result on `main`.
+
+## Run it live
+
+**Live address:** _not deployed yet_ (`https://<app>.<environment>.uksouth.azurecontainerapps.io`)
+
+### What runs where
+
+- **The API** runs on Azure Container Apps, consumption plan: at least 0 replicas and
+  at most 1, each with 0.25 vCPU and 0.5 GiB. With no traffic it scales to nothing.
+- **The image** is built and published by CI on every push to `main`, after the
+  tests pass: `ghcr.io/cliffordkeeble/energy-positions-api`, tagged with the commit
+  and with `latest`. Azure pulls it with no credentials, which works only while the
+  package is public: after the first publish, open it from the repository's
+  Packages, and if it says Private, change its visibility to Public.
+- **The database** is PostgreSQL on Neon's free plan, which also scales to nothing
+  when idle.
+
+Both sleep when nobody is using them, so **the first request after a quiet spell can
+take up to 30 seconds** while they wake. Locally the container answers in under
+3 seconds; the rest is margin for fetching the image and waking the database.
+
+### Why it costs nothing
+
+- **Container Apps** gives each subscription 180,000 vCPU-seconds, 360,000
+  GiB-seconds and 2 million requests a month free
+  ([billing](https://learn.microsoft.com/azure/container-apps/billing)). At 0.25 vCPU
+  and 0.5 GiB, either allowance is 200 hours of a running replica, and with a minimum
+  of 0 replicas it runs only while it is being used.
+- **Neon's free plan** gives 100 compute-hours and 1 GB of storage per project a
+  month ([pricing](https://neon.com/pricing)). The full seed is 386 MB, tables and
+  indexes together, measured on the local database.
+- **No Log Analytics workspace**, so nothing bills for logs.
+
+### The database on Neon
+
+Create a project in AWS Europe West 2 (London), near Azure's UK South. In the
+console's connection details, **turn connection pooling off and copy the direct
+URL**: its host has no `-pooler` in it. The app keeps its own pool of connections,
+at most ten, from a single replica, so Neon's PgBouncer would add nothing, and in
+its transaction mode asyncpg cannot keep prepared statements. Paste the URL as the
+console gives it, with `sslmode=require` and `channel_binding=require` on the end:
+asyncpg keeps the first, and the app removes the second, which only libpq
+understands (see `connect_arguments` in
+[`src/energy_positions/db.py`](src/energy_positions/db.py)). If the pooled URL is
+used anyway, the app turns asyncpg's statement cache off for it.
+
+Seed it from this folder. The quotes around the `set` matter: the URL contains `&`,
+which cmd would otherwise take as the end of the command:
+
+```
+set "DATABASE_URL=postgresql://<role>:<password>@ep-<name>.eu-west-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+```
+
+```
+uv run python scripts/apply_sql.py sql/schema.sql
+```
+
+```
+uv run python scripts/seed.py
+```
+
+The seed sends 2.6 million rows over the internet, so it takes longer than it does
+locally.
+
+### The Azure commands
+
+None of these has been run. They need the [Azure CLI](https://learn.microsoft.com/cli/azure/)
+and an Azure subscription. Sign in, and add the Container Apps commands:
+
+```
+az login
+```
+
+```
+az extension add --name containerapp --upgrade
+```
+
+```
+az provider register --namespace Microsoft.App
+```
+
+A resource group in UK South:
+
+```
+az group create --name rg-energy-positions --location uksouth
+```
+
+A Container Apps environment with no Log Analytics workspace:
+
+```
+az containerapp env create --name cae-energy-positions --resource-group rg-energy-positions --location uksouth --logs-destination none
+```
+
+The app, from the public image, with external ingress on the container's port 8000.
+The Neon URL is held as a secret, and `DATABASE_URL` refers to the secret rather
+than holding the URL itself:
+
+```
+az containerapp create --name energy-positions-api --resource-group rg-energy-positions --environment cae-energy-positions --image ghcr.io/cliffordkeeble/energy-positions-api:latest --ingress external --target-port 8000 --min-replicas 0 --max-replicas 1 --cpu 0.25 --memory 0.5Gi --secrets "database-url=<the direct Neon URL>" --env-vars DATABASE_URL=secretref:database-url
+```
+
+Its address, for the line at the top of this section:
+
+```
+az containerapp show --name energy-positions-api --resource-group rg-energy-positions --query properties.configuration.ingress.fqdn --output tsv
+```
+
+A new image is not picked up by itself. To run a later commit, point the app at
+that commit's tag:
+
+```
+az containerapp update --name energy-positions-api --resource-group rg-energy-positions --image ghcr.io/cliffordkeeble/energy-positions-api:<commit sha>
+```
+
 ## Settlement periods
 
 Electricity in Great Britain is traded and settled in half-hours. Each one is a
@@ -181,7 +300,7 @@ src/energy_positions/
     settlement.py   the settlement period: a pure value type, no clock, no database
     clock.py        time as a service: Clock, SystemClock, FixedClock
     app.py          the app, and the lifespan that owns the connection pool
-    db.py           the per-request connection
+    db.py           the database URL as asyncpg needs it, and the per-request connection
     routes.py       the four endpoints
     queries.py      every SQL statement, in full
     models.py       the request and response shapes
@@ -194,7 +313,10 @@ scripts/
     explain.py      EXPLAIN (ANALYZE, BUFFERS) of the positions query, written to out/
 tests/
     test_settlement.py, test_clock.py    pure
+    test_going_live.py                   pure: Neon's URL, and the redirect from /
     test_api.py, test_lost_update.py     marked db: they need the container
+Dockerfile          the image: the locked dependencies and the package, run as a non-root user
+.github/workflows/  ci.yml: the tests, then the image published to ghcr.io
 ```
 
 Three choices worth knowing about:
@@ -213,7 +335,8 @@ Three choices worth knowing about:
 - **Not a benchmark.** Any timing you see here was taken on synthetic data, on one
   laptop. It says which of two query plans is cheaper and nothing more.
 - **Not production code.** There is no authentication, no portfolio table, no
-  migration tool and no configuration beyond `DATABASE_URL`. The database password
-  in `compose.yaml` is a throwaway for a container that only this machine can reach.
+  migration tool, and no configuration beyond `DATABASE_URL`, plus `PORT` for the
+  container. The database password in `compose.yaml` is a throwaway for a container
+  that only this machine can reach.
 - **Not real data.** No trade, price or portfolio here describes anything that
   happened.

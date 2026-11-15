@@ -1,0 +1,9 @@
+# The image holds what runs and nothing else, so everything is left out and the few
+# files the build needs are let back in. No tests, .venv, .git, .claude, .vscode or
+# out/; and no scripts/ or sql/: seeding is done from a checkout, with uv.
+*
+!pyproject.toml
+!uv.lock
+!.python-version
+!README.md
+!src/

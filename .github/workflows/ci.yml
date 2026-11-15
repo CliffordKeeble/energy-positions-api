@@ -1,0 +1,72 @@
+# The whole test suite against PostgreSQL 17, on every pull request and every push
+# to main. On a push to main, and only once the tests have passed, the image is built
+# and published to GitHub Container Registry, tagged with the commit and with latest.
+#
+# No secret beyond the GITHUB_TOKEN that every run is given. Each action is pinned
+# to a commit, with its release tag beside it.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: tests on PostgreSQL 17
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: positions
+          POSTGRES_PASSWORD: positions
+          POSTGRES_DB: positions
+        # The same port as compose.yaml, so the tests find it with no settings.
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U positions -d positions"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+      - name: Install Python and the locked dependencies
+        run: uv sync --frozen
+      # One test is a strict expected failure (exercise 2): if it ever passes, the run fails.
+      - name: Run the whole suite
+        run: uv run --frozen pytest -ra
+
+  publish:
+    name: publish the image to ghcr.io
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The name is written out in lower case: a registry refuses capitals, and the
+      # account name has them.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/cliffordkeeble/energy-positions-api:${{ github.sha }}
+            ghcr.io/cliffordkeeble/energy-positions-api:latest

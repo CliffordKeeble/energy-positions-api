@@ -21,9 +21,7 @@ from collections.abc import Iterator
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-import asyncpg
-
-from energy_positions.db import database_url, describe
+from energy_positions.db import connect, database_url, describe
 from energy_positions.settlement import periods_in
 
 SEED = 20261112
@@ -66,7 +64,7 @@ async def seed() -> None:
     url = database_url()
     rng = random.Random(SEED)
     started = time.perf_counter()
-    connection = await asyncpg.connect(url)
+    connection = await connect(url)
     try:
         print(f"seeding {describe(url)} with synthetic trades (random seed {SEED})")
         await connection.execute("TRUNCATE trades, positions RESTART IDENTITY")

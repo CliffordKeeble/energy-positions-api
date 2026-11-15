@@ -12,14 +12,12 @@ import sys
 import time
 from pathlib import Path
 
-import asyncpg
-
-from energy_positions.db import database_url, describe
+from energy_positions.db import connect, database_url, describe
 
 
 async def apply(paths: list[Path]) -> None:
     url = database_url()
-    connection = await asyncpg.connect(url)
+    connection = await connect(url)
     try:
         for path in paths:
             started = time.perf_counter()

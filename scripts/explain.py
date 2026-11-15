@@ -21,11 +21,9 @@ import sys
 from datetime import date
 from pathlib import Path
 
-import asyncpg
-
 from energy_positions import queries
 from energy_positions.clock import SystemClock
-from energy_positions.db import database_url, describe
+from energy_positions.db import connect, database_url, describe
 from energy_positions.settlement import LONDON, periods_in
 
 PORTFOLIO_ID = 7
@@ -59,7 +57,7 @@ async def explain(label: str) -> None:
     periods = periods_in(SETTLEMENT_DATE)
     parameters = (PORTFOLIO_ID, periods[0].start_utc, periods[-1].end_utc)
 
-    connection = await asyncpg.connect(url)
+    connection = await connect(url)
     try:
         await connection.fetch(queries.POSITIONS_FOR_SPAN, *parameters)  # warm up; not measured
         rows = await connection.fetch(

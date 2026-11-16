@@ -385,7 +385,7 @@ Where to find each piece:
 src/energy_positions/
     settlement.py   the settlement period: a pure value type, no clock, no database
     clock.py        time as a service: Clock, SystemClock, FixedClock
-    app.py          the app, and the lifespan that owns the connection pool
+    app.py          the app, the lifespan that owns the connection pool, and the page's mount
     db.py           the database URL as asyncpg needs it, and the per-request connection
     routes.py       the four endpoints
     queries.py      every SQL statement, in full
@@ -401,6 +401,7 @@ scripts/
 tests/
     test_settlement.py, test_clock.py    pure
     test_going_live.py                   pure: Neon's URL, and the redirect from /
+    test_page.py                         pure: the page is mounted after every endpoint, and only if built
     test_api.py, test_lost_update.py     marked db: they need the container
 Dockerfile          the image: the locked dependencies and the package, run as a non-root user
 .github/workflows/  ci.yml: the tests, the image published to ghcr.io, the app deployed

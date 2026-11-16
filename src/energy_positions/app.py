@@ -2,17 +2,22 @@
 
     uv run uvicorn energy_positions.app:app --port 8048
 
-Uvicorn is the server; this module hands it the ASGI app to serve.
+Uvicorn is the server; this module hands it the ASGI app to serve. If the one-page
+front end has been built (web/, see the README), the same app serves it at "/".
 """
 
 from __future__ import annotations
 
+import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import asyncpg
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from energy_positions import db
 from energy_positions.routes import router
@@ -33,8 +38,32 @@ database.)
 """
 
 
-def create_app(database_url: str | None = None) -> FastAPI:
-    """Build the app. A test passes the URL of its own database; nothing else does."""
+# Uvicorn's own logger, so that a line written here is shown by `uvicorn` with no
+# logging set up of ours.
+log = logging.getLogger("uvicorn.error")
+
+# Where the built page is looked for when nothing says: web/dist, beside src/. That is
+# right in a checkout, where `uv sync` installs the package as a link back to src/. In
+# the image the package is a wheel and this path leads nowhere, so the image sets
+# WEB_DIR.
+SOURCE_TREE_WEB_DIR = Path(__file__).resolve().parents[2] / "web" / "dist"
+
+
+def default_web_dir() -> Path:
+    """The folder of the built page: WEB_DIR if it is set, else web/dist in the source tree."""
+    from_environment = os.environ.get("WEB_DIR")
+    return Path(from_environment) if from_environment else SOURCE_TREE_WEB_DIR
+
+
+def create_app(
+    database_url: str | None = None, web_dir: str | os.PathLike[str] | None = None
+) -> FastAPI:
+    """Build the app.
+
+    A test passes the URL of its own database, and the folder its page is in, or one
+    with no page. Nothing else does: the server takes the database from DATABASE_URL
+    and the page from WEB_DIR (see default_web_dir).
+    """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -56,12 +85,20 @@ def create_app(database_url: str | None = None) -> FastAPI:
     )
     app.include_router(router)
 
-    # TEMPORARY: until there is a front page, "/" sends a visitor to /docs. The
-    # one-page front end will mount static files at "/" after the router, and a route
-    # registered first answers first, so delete this route when that page lands.
-    @app.get("/", include_in_schema=False)
-    async def front_page() -> RedirectResponse:
-        return RedirectResponse(url="/docs")
+    folder = Path(web_dir) if web_dir is not None else default_web_dir()
+    if (folder / "index.html").is_file():
+        # Mounted after the router, on purpose. A Mount at "/" answers every path no
+        # route claimed first, and routes are tried in the order they were added, so
+        # mounting it first would put the page in front of every endpoint. (/docs and
+        # /openapi.json are added when FastAPI is constructed, before any of this, so
+        # they would survive the mistake; an endpoint would not.)
+        app.mount("/", StaticFiles(directory=folder, html=True), name="page")
+    else:
+        log.info("The page is not built (no index.html in %s), so / redirects to /docs", folder)
+
+        @app.get("/", include_in_schema=False)
+        async def front_page() -> RedirectResponse:
+            return RedirectResponse(url="/docs")
 
     return app
 

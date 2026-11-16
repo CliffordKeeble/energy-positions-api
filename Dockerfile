@@ -1,11 +1,28 @@
-# The API in a container: Uvicorn serving energy_positions.app, as a non-root user.
+# The API in a container: Uvicorn serving energy_positions.app, as a non-root user,
+# and the one-page front end it serves at /.
 #
 #   docker build -t energy-positions-api .
 #   docker run --rm -p 8048:8000 -e DATABASE_URL=... energy-positions-api
 #
-# Two stages. The first installs the locked dependencies and the package into a
-# virtual environment with uv; the second copies that environment, and nothing else,
-# onto a clean Python.
+# Three stages. The first builds the page, with Node. The second installs the locked
+# dependencies and the package into a virtual environment with uv. The third copies
+# that environment and the built page, and nothing else, onto a clean Python: nothing
+# of Node reaches the image.
+
+# Node 22, pinned to the version the page was built and tested with. web/package.json
+# says what the page needs, and the `web` job in ci.yml names this same version.
+FROM node:22.23.4-slim AS web
+
+WORKDIR /web
+
+# The packages first, in a layer of their own: it is rebuilt only when the lock changes.
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+
+# Then the page. Its tests run in CI's `web` job, not here: the image only needs the build.
+COPY web/ ./
+RUN npm run build
+
 
 FROM python:3.14-slim AS build
 
@@ -40,6 +57,11 @@ RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin api
 COPY --from=build /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
+
+# The built page, and where the app finds it. The package is a wheel here, so the
+# source-tree default (web/dist beside src/) leads nowhere, and WEB_DIR has to say.
+COPY --from=web /web/dist /app/web
+ENV WEB_DIR=/app/web
 
 USER api
 EXPOSE 8000

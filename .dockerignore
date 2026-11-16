@@ -1,9 +1,15 @@
 # The image holds what runs and nothing else, so everything is left out and the few
 # files the build needs are let back in. No tests, .venv, .git, .claude, .vscode or
-# out/; and no scripts/ or sql/: seeding is done from a checkout, with uv.
+# out/; and no scripts/ or sql/: seeding is done from a checkout, with uv. The page is
+# let in as its sources, without the node_modules and dist of a machine that has built
+# it: the Node stage runs npm ci and builds its own. (The last pattern that matches a
+# path decides, so the two exclusions come after web/ is let in.)
 *
 !pyproject.toml
 !uv.lock
 !.python-version
 !README.md
 !src/
+!web/
+web/node_modules
+web/dist

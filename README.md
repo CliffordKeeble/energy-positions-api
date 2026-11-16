@@ -161,7 +161,10 @@ a service container. The badge at the top is its latest result on `main`.
   at most 1, each with 0.25 vCPU and 0.5 GiB. With no traffic it scales to nothing.
 - **The image** is built and published by CI on every push to `main`, after the
   tests pass: `ghcr.io/cliffordkeeble/energy-positions-api`, tagged with the commit
-  and with `latest`. Azure pulls it with no credentials, which works only while the
+  and with `latest`. It carries the page as well as the API: a first stage on Node
+  builds `web/`, and only the built files are copied into the final image, which
+  has no Node in it. [The page](#the-page) is therefore served at the live address's
+  `/`, and `/docs` is where it was. Azure pulls it with no credentials, which works only while the
   package is public: after the first publish, open it from the repository's
   Packages, and if it says Private, change its visibility to Public. The same run
   then deploys the commit's image: see
@@ -447,7 +450,7 @@ tests/
     test_page.py                         pure: the page is mounted after every endpoint, and only if built
     test_api.py, test_lost_update.py     marked db: they need the container
 web/                the one page: Vite, React, TypeScript, and its tests (npm test)
-Dockerfile          the image: the locked dependencies and the package, run as a non-root user
+Dockerfile          the image: the built page, the locked dependencies and the package, run as a non-root user
 .github/workflows/  ci.yml: the tests, the image published to ghcr.io, the app deployed
 ```
 

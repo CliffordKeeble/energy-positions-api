@@ -120,7 +120,9 @@ a service container. The badge at the top is its latest result on `main`.
   tests pass: `ghcr.io/cliffordkeeble/energy-positions-api`, tagged with the commit
   and with `latest`. Azure pulls it with no credentials, which works only while the
   package is public: after the first publish, open it from the repository's
-  Packages, and if it says Private, change its visibility to Public.
+  Packages, and if it says Private, change its visibility to Public. The same run
+  then deploys the commit's image: see
+  [A push to main goes live](#a-push-to-main-goes-live).
 - **The database** is PostgreSQL on Neon's free plan, which also scales to nothing
   when idle. The live project runs **PostgreSQL 18**, Neon's default when it was
   created; the tests, CI and `compose.yaml` use 17. The schema and the full seed ran
@@ -216,8 +218,87 @@ Its address, for the line at the top of this section:
 az containerapp show --name energy-positions-api --resource-group rg-energy-positions --query properties.configuration.ingress.fqdn --output tsv
 ```
 
-A new image is not picked up by itself. To run a later commit, point the app at
-that commit's tag:
+### A push to main goes live
+
+A push to `main` runs three jobs in
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml), each waiting for the one
+before it:
+
+1. `test` runs the whole suite.
+2. `publish` builds the image and pushes it to ghcr.io, tagged with the commit.
+3. `deploy` signs in to Azure, points the app at **that commit's tag**, and checks
+   the result. The tag is never `latest`, so what goes live is the image built from
+   the commit the tests passed on.
+
+The check is [`scripts/smoke_check.py`](scripts/smoke_check.py), and it can fail.
+The job goes red unless both of these are seen within 300 seconds:
+
+- every revision of the app that carries traffic is running the tag just deployed;
+- `GET /portfolios/7/positions/current` at the live address answers 200 with a
+  `settlement_period` and a `net_mwh`.
+
+So a tag that does not exist, a deployment that did not take, a wrong path and an
+app that cannot reach its database all end in a red run. The check tries again
+every 5 seconds, because the app and the database may both be asleep, and it prints
+how long the first 200 took. To run the second half of it from anywhere:
+
+```
+uv run python scripts/smoke_check.py --endpoint-only --url https://energy-positions-api.politerock-e062906b.uksouth.azurecontainerapps.io/portfolios/7/positions/current
+```
+
+**No Azure secret is stored in GitHub.** The job signs in with OpenID Connect.
+GitHub gives each run a short-lived token that says which repository and branch the
+run is for, and Azure accepts it because an app registration there has been told to
+trust exactly one subject: this repository, on `main`. A pull request, a fork or
+another branch gets a token with a different subject, and Azure refuses it.
+
+The workflow reads three repository **variables**, set under Settings, Secrets and
+variables, Actions, Variables. They are identifiers, not secrets:
+
+| Variable | What it holds |
+|---|---|
+| `AZURE_CLIENT_ID` | the application (client) id of the app registration |
+| `AZURE_TENANT_ID` | the id of the Microsoft Entra tenant the registration is in |
+| `AZURE_SUBSCRIPTION_ID` | the id of the subscription that holds `rg-energy-positions` |
+
+The setup in Azure is done once, in four commands. As written here they have not
+been run; each was checked against the Azure CLI's own `--help`.
+
+An app registration, which is the identity the job signs in as. The `appId` in its
+output is `AZURE_CLIENT_ID`, and is the `<app id>` below:
+
+```
+az ad app create --display-name gh-energy-positions-api-deploy
+```
+
+A service principal for it, which is what a role is given to. The `id` in its
+output is the `<service principal object id>` below:
+
+```
+az ad sp create --id <app id>
+```
+
+The federated credential, which is the trust itself: tokens from GitHub's issuer,
+for this repository on `main` and nothing else:
+
+```
+az ad app federated-credential create --id <app id> --parameters "{\"name\":\"github-main\",\"issuer\":\"https://token.actions.githubusercontent.com\",\"subject\":\"repo:CliffordKeeble/energy-positions-api:ref:refs/heads/main\",\"audiences\":[\"api://AzureADTokenExchange\"]}"
+```
+
+The role: Contributor on the one resource group, and nothing wider:
+
+```
+az role assignment create --assignee-object-id <service principal object id> --assignee-principal-type ServicePrincipal --role Contributor --scope /subscriptions/<subscription id>/resourceGroups/rg-energy-positions
+```
+
+The tenant and subscription ids, for the other two variables:
+
+```
+az account show --query "{tenant: tenantId, subscription: id}"
+```
+
+The fallback, if a deployment ever has to be made by hand, is to point the app at a
+commit's tag yourself:
 
 ```
 az containerapp update --name energy-positions-api --resource-group rg-energy-positions --image ghcr.io/cliffordkeeble/energy-positions-api:<commit sha>
@@ -316,12 +397,13 @@ scripts/
     apply_sql.py    applies SQL files to the database
     seed.py         synthetic trades, fixed random seed
     explain.py      EXPLAIN (ANALYZE, BUFFERS) of the positions query, written to out/
+    smoke_check.py  the deploy job's check of the live app, which can fail
 tests/
     test_settlement.py, test_clock.py    pure
     test_going_live.py                   pure: Neon's URL, and the redirect from /
     test_api.py, test_lost_update.py     marked db: they need the container
 Dockerfile          the image: the locked dependencies and the package, run as a non-root user
-.github/workflows/  ci.yml: the tests, then the image published to ghcr.io
+.github/workflows/  ci.yml: the tests, the image published to ghcr.io, the app deployed
 ```
 
 Three choices worth knowing about:

@@ -149,7 +149,8 @@ whether or not the seed has been run.
 
 The same suite runs on GitHub for every pull request and every push to `main`
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), against PostgreSQL 17 in
-a service container. The badge at the top is its latest result on `main`.
+a service container, beside the page's own tests (`npm test` in `web/`) and its
+build. The badge at the top is its latest result on `main`.
 
 ## Run it live
 
@@ -266,12 +267,14 @@ az containerapp show --name energy-positions-api --resource-group rg-energy-posi
 
 ### A push to main goes live
 
-A push to `main` runs three jobs in
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml), each waiting for the one
+A push to `main` runs four jobs in
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml), and each waits for the ones
 before it:
 
-1. `test` runs the whole suite.
-2. `publish` builds the image and pushes it to ghcr.io, tagged with the commit.
+1. `test` runs the whole suite, and `web` runs the page's tests and builds it. They
+   run side by side.
+2. `publish` waits for both, then builds the image and pushes it to ghcr.io, tagged
+   with the commit.
 3. `deploy` signs in to Azure, points the app at **that commit's tag**, and checks
    the result. The tag is never `latest`, so what goes live is the image built from
    the commit the tests passed on.
@@ -451,7 +454,7 @@ tests/
     test_api.py, test_lost_update.py     marked db: they need the container
 web/                the one page: Vite, React, TypeScript, and its tests (npm test)
 Dockerfile          the image: the built page, the locked dependencies and the package, run as a non-root user
-.github/workflows/  ci.yml: the tests, the image published to ghcr.io, the app deployed
+.github/workflows/  ci.yml: the tests, the page, the image published to ghcr.io, the app deployed
 ```
 
 Three choices worth knowing about:

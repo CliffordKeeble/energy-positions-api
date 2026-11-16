@@ -1,6 +1,7 @@
-# The whole test suite against PostgreSQL 17, on every pull request and every push
-# to main. On a push to main, and only once the tests have passed, the image is built
-# and published to GitHub Container Registry, tagged with the commit and with latest.
+# The whole test suite against PostgreSQL 17, and the one-page front end built and
+# tested, on every pull request and every push to main. On a push to main, and only
+# once both have passed, the image is built and published to GitHub Container
+# Registry, tagged with the commit and with latest.
 # Then the app on Azure Container Apps is pointed at that commit's image, and a smoke
 # check of the live app, which can fail, is the last step.
 #
@@ -49,9 +50,31 @@ jobs:
       - name: Run the whole suite
         run: uv run --frozen pytest -ra
 
+  # The page: its tests, then its build, which is what the image's Node stage runs.
+  # The Node version is the one the Dockerfile's first stage pins.
+  web:
+    name: the page builds and its tests pass
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.23.4"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install the locked packages
+        run: npm ci
+      - name: Run the page's tests
+        run: npm test
+      - name: Build the page
+        run: npm run build
+
   publish:
     name: publish the image to ghcr.io
-    needs: test
+    needs: [test, web]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:

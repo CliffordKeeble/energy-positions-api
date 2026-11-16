@@ -6,6 +6,8 @@ hands out.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from asyncpg import connect_utils
 from httpx import ASGITransport, AsyncClient
 
@@ -58,9 +60,11 @@ def test_the_local_url_is_handed_over_unchanged() -> None:
     assert connect_arguments(DEFAULT_DATABASE_URL) == (DEFAULT_DATABASE_URL, {})
 
 
-async def test_the_root_sends_a_visitor_to_the_docs() -> None:
+async def test_the_root_sends_a_visitor_to_the_docs(tmp_path: Path) -> None:
     # The app's lifespan is not run here, so no database is needed or reached.
-    app = create_app("postgresql://nobody@127.0.0.1:1/nothing")
+    # The page folder is an empty one this test names, so it does not depend on whether
+    # this machine has built web/dist or set WEB_DIR.
+    app = create_app("postgresql://nobody@127.0.0.1:1/nothing", web_dir=tmp_path)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/", follow_redirects=False)
 

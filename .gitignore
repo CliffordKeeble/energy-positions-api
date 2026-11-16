@@ -5,6 +5,10 @@ __pycache__/
 *.egg-info/
 dist/
 
+# The page: its packages, and its build, which `npm run build` makes.
+web/node_modules/
+web/dist/
+
 # out/ is kept, its contents are not: they are one machine's measurements.
 out/*
 !out/.gitkeep

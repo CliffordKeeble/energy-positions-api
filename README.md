@@ -84,6 +84,49 @@ The addresses say `127.0.0.1` and not `localhost` for a reason. On Windows
 `localhost` is tried over IPv6 first, the container is published on IPv4 only, and
 each new database connection then waits about two seconds for the miss.
 
+## The page
+
+One page, in front of the API, so that it can be shown in a browser: pick a
+portfolio and a settlement date, see a bar for each settlement period, and post a
+trade. Pick 25 Oct 2026 and it draws 50 bars, two of them at 01:00 on a UK clock.
+It is React and TypeScript, built with Vite, and lives in [`web/`](web/). The API
+serves it at `/`.
+
+**The page holds no calendar.** Every period, label and start time on it comes from
+the API's response, and the number of bars is the length of the list that
+`/positions` returned. The one piece of time handling it does is to show `start_utc`
+on a UK clock, naming `Europe/London` explicitly and never the browser's own zone.
+Volumes and prices are sent as the strings typed, and shown as the strings the API
+sent, so no figure on it passes through a binary float.
+
+Build it once. This needs [Node](https://nodejs.org/) 22.22.2 or later; the image and
+CI build with 22.23.4:
+
+```
+cd web
+npm ci
+npm run build
+```
+
+Start the API as above and open <http://127.0.0.1:8048/>. To work on the page, keep
+the API running and, from a second command prompt, start Vite's dev server:
+
+```
+cd web
+npm run dev
+```
+
+Then open <http://127.0.0.1:5173/>. Vite sends `/portfolios` and `/trades` to the API
+on `127.0.0.1:8048`, and the page calls the API by relative paths only, so there is
+no CORS anywhere and one build works on every address. `npm test` runs the page's
+tests.
+
+The app serves `web/dist` if it holds an `index.html`, mounted at `/` after every
+endpoint, so an endpoint always answers before the page can. If it does not (a
+checkout that has never been through Node), `/` redirects to `/docs`, and the log
+says that the page is not built. `WEB_DIR` points the app at another folder; the
+image sets it.
+
 ## Run the tests
 
 ```
@@ -403,6 +446,7 @@ tests/
     test_going_live.py                   pure: Neon's URL, and the redirect from /
     test_page.py                         pure: the page is mounted after every endpoint, and only if built
     test_api.py, test_lost_update.py     marked db: they need the container
+web/                the one page: Vite, React, TypeScript, and its tests (npm test)
 Dockerfile          the image: the locked dependencies and the package, run as a non-root user
 .github/workflows/  ci.yml: the tests, the image published to ghcr.io, the app deployed
 ```

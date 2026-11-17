@@ -16,8 +16,9 @@ from pathlib import Path
 
 import asyncpg
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from energy_positions import db
 from energy_positions.routes import router
@@ -47,6 +48,31 @@ log = logging.getLogger("uvicorn.error")
 # the image the package is a wheel and this path leads nowhere, so the image sets
 # WEB_DIR.
 SOURCE_TREE_WEB_DIR = Path(__file__).resolve().parents[2] / "web" / "dist"
+
+
+class PageFiles(StaticFiles):
+    """The built page's folder, with a Cache-Control header on every file it sends.
+
+    Vite puts a hash of the content in the name of everything under assets/, so a new
+    build is a new name and an old one never changes: those are kept for a year. Every
+    other file, index.html above all, keeps its name from one build to the next, so a
+    browser may keep it but must ask each time, and the ETag makes that a 304 when
+    nothing has changed. Without a header a browser may reuse an old index.html by
+    guesswork, and with it the old bundle, long after a deploy.
+    """
+
+    ASSETS = "assets"
+    ALWAYS_ASK = "no-cache"
+    NEVER_CHANGES = "public, max-age=31536000, immutable"
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        # Only a file sent (200) or confirmed unchanged (304): a 404 or a redirect is
+        # left as it was. `path` is relative to the folder, with the OS's separator.
+        if response.status_code in (200, 304):
+            is_asset = Path(path).parts[:1] == (self.ASSETS,)
+            response.headers["Cache-Control"] = self.NEVER_CHANGES if is_asset else self.ALWAYS_ASK
+        return response
 
 
 def default_web_dir() -> Path:
@@ -92,7 +118,7 @@ def create_app(
         # mounting it first would put the page in front of every endpoint. (/docs and
         # /openapi.json are added when FastAPI is constructed, before any of this, so
         # they would survive the mistake; an endpoint would not.)
-        app.mount("/", StaticFiles(directory=folder, html=True), name="page")
+        app.mount("/", PageFiles(directory=folder, html=True), name="page")
     else:
         log.info("The page is not built (no index.html in %s), so / redirects to /docs", folder)
 

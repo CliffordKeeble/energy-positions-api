@@ -37,6 +37,9 @@ async def no_trades() -> AsyncIterator[NoTrades]:
 @pytest.fixture
 def folder_with_a_page(tmp_path: Path) -> Path:
     (tmp_path / "index.html").write_text(PAGE, encoding="utf-8")
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "index-Cp5R2Nzf.js").write_text("console.log('the bundle');", encoding="utf-8")
+    (tmp_path / "robots.txt").write_text("User-agent: *", encoding="utf-8")
     return tmp_path
 
 
@@ -56,6 +59,56 @@ async def test_the_root_serves_the_page_when_it_is_built(folder_with_a_page: Pat
 
     assert response.status_code == 200
     assert response.text == PAGE
+
+
+async def test_the_root_is_kept_but_asked_about_each_time(folder_with_a_page: Path) -> None:
+    # A returning visitor must learn of a deploy: the page names the bundle, and the
+    # bundle's name changes with every build, so the page is the one thing to re-check.
+    app = create_app(NOWHERE, web_dir=folder_with_a_page)
+    async with client_of(app) as client:
+        response = await client.get("/")
+
+    assert response.headers["cache-control"] == "no-cache"
+
+
+async def test_the_page_asked_for_by_name_is_asked_about_each_time_too(folder_with_a_page: Path) -> None:
+    app = create_app(NOWHERE, web_dir=folder_with_a_page)
+    async with client_of(app) as client:
+        response = await client.get("/index.html")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-cache"
+
+
+async def test_a_file_under_assets_is_kept_for_a_year_and_never_asked_about(folder_with_a_page: Path) -> None:
+    # Vite puts a hash of the content in the name, so a new build is a new name.
+    app = create_app(NOWHERE, web_dir=folder_with_a_page)
+    async with client_of(app) as client:
+        response = await client.get("/assets/index-Cp5R2Nzf.js")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
+async def test_any_other_file_in_the_folder_is_asked_about_each_time(folder_with_a_page: Path) -> None:
+    app = create_app(NOWHERE, web_dir=folder_with_a_page)
+    async with client_of(app) as client:
+        response = await client.get("/robots.txt")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-cache"
+
+
+async def test_asking_again_about_an_unchanged_page_is_a_304_that_still_says_no_cache(
+    folder_with_a_page: Path,
+) -> None:
+    app = create_app(NOWHERE, web_dir=folder_with_a_page)
+    async with client_of(app) as client:
+        first = await client.get("/")
+        again = await client.get("/", headers={"If-None-Match": first.headers["etag"]})
+
+    assert again.status_code == 304
+    assert again.headers["cache-control"] == "no-cache"
 
 
 async def test_the_docs_still_answer_beside_the_page(folder_with_a_page: Path) -> None:
@@ -87,6 +140,17 @@ async def test_an_endpoint_still_reaches_the_api_and_not_the_page(folder_with_a_
     assert rows[0]["settlement_period"]["period"] == 1
     assert rows[0]["net_mwh"] == "0.000"
     assert PAGE not in response.text
+
+
+async def test_an_endpoint_carries_none_of_the_pages_cache_headers(folder_with_a_page: Path) -> None:
+    # The headers belong to the page's mount alone; the API's answers are left as they were.
+    app = create_app(NOWHERE, web_dir=folder_with_a_page)
+    app.dependency_overrides[get_connection] = no_trades
+    async with client_of(app) as client:
+        response = await client.get("/portfolios/7/positions", params={"settlement_date": "2026-10-25"})
+
+    assert response.status_code == 200
+    assert "cache-control" not in response.headers
 
 
 async def test_a_post_to_an_endpoint_path_still_reaches_the_api(folder_with_a_page: Path) -> None:

@@ -125,11 +125,21 @@ describe('the period numbers under the bars', () => {
     expect(named(labelled(day(48), 7))).toEqual(Array.from({ length: 24 }, (_, i) => 2 * i + 1))
   })
 
-  test('on the 50-bar day periods 3, 4, 5 and 6 are always named', () => {
-    const periods = named(labelled(day(50), 7))
+  test('on the 50-bar day periods 3, 4, 5 and 6 are always named, where a digit has room', () => {
+    const periods = named(labelled(day(50), 9))
 
     expect(periods).toEqual(expect.arrayContaining([3, 4, 5, 6]))
     expect(periods).toHaveLength(25 + 2) // the odd ones, and 4 and 6
+  })
+
+  test('at phone width the 50-bar day is named every second bar, and 4 and 6 give way', () => {
+    const periods = named(labelled(day(50), 343 / 50)) // 343 px of chart at 375 px of screen
+
+    expect(periods).toEqual(Array.from({ length: 25 }, (_, i) => 2 * i + 1))
+    expect(periods).toContain(3) // the first 01:00 (BST)
+    expect(periods).toContain(5) // the second (GMT)
+    expect(periods).not.toContain(4)
+    expect(periods).not.toContain(6)
   })
 
   test('the 46-bar day has no such exception', () => {
@@ -137,7 +147,7 @@ describe('the period numbers under the bars', () => {
   })
 
   test('the text is drawn under the bars, from the API period numbers', () => {
-    bars(day(50), 360)
+    bars(day(50), 500)
     const texts = Array.from(document.querySelectorAll('text.period')).map((text) => text.textContent)
 
     expect(texts).toHaveLength(27)

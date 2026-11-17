@@ -11,6 +11,8 @@ const TIP_WIDTH = 168
 const TIP_GAP = 14
 /** What a two-digit period number needs, side by side with its neighbour. */
 const LABEL_ROOM = 14
+/** A one-digit period number (about 5.4 px at 10 px) and the 3 px it needs to read apart from its neighbour. */
+const DIGIT_ROOM = 9
 
 /**
  * The line above the chart, built from the count of bars the API returned. The page
@@ -26,11 +28,13 @@ export function countLine(count: number): string {
 /**
  * Which bars carry their period number: every bar where it fits, otherwise every
  * second. On the 50-bar day periods 3 to 6, the two passes over 01:00 and 01:30, are
- * always named, because they are the point of looking.
+ * always named, because they are the point of looking, but only where a one-digit
+ * number has room (DIGIT_ROOM). Narrower than that they would run together, and the
+ * plain every-second-bar rule still names 3 and 5, the two 01:00s.
  */
 export function labelled(rows: readonly Position[], slot: number): boolean[] {
   const everyBar = slot >= LABEL_ROOM
-  const clocksBack = rows.length === 50
+  const clocksBack = rows.length === 50 && slot >= DIGIT_ROOM
   return rows.map((row, index) => {
     if (everyBar || index % 2 === 0) return true
     const { period } = row.settlement_period

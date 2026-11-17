@@ -224,8 +224,8 @@ locally.
 
 ### The Azure commands
 
-None of these has been run. They need the [Azure CLI](https://learn.microsoft.com/cli/azure/)
-and an Azure subscription. Sign in, and add the Container Apps commands:
+The live service was set up with these in Azure Cloud Shell on 15 November 2026. They need the
+[Azure CLI](https://learn.microsoft.com/cli/azure/) and an Azure subscription. Sign in, and add the Container Apps commands:
 
 ```
 az login
@@ -310,8 +310,8 @@ variables, Actions, Variables. They are identifiers, not secrets:
 | `AZURE_TENANT_ID` | the id of the Microsoft Entra tenant the registration is in |
 | `AZURE_SUBSCRIPTION_ID` | the id of the subscription that holds `rg-energy-positions` |
 
-The setup in Azure is done once, in four commands. As written here they have not
-been run; each was checked against the Azure CLI's own `--help`.
+The setup in Azure is done once, in four commands. They were run in Azure Cloud Shell on
+15 and 16 November 2026, and the federated credential below is the form that works.
 
 An app registration, which is the identity the job signs in as. The `appId` in its
 output is `AZURE_CLIENT_ID`, and is the `<app id>` below:
@@ -328,10 +328,24 @@ az ad sp create --id <app id>
 ```
 
 The federated credential, which is the trust itself: tokens from GitHub's issuer,
-for this repository on `main` and nothing else:
+for this repository on `main` and nothing else.
+
+GitHub gives a repository created after 15 July 2026 an immutable subject, which
+carries the owner's and the repository's numeric ids as well as their names, so a
+rename cannot hand the trust to someone else. This repository is one of them, and
+its subject is
+`repo:CliffordKeeble@7225368/energy-positions-api@1455871332:ref:refs/heads/main`.
+The older form, `repo:CliffordKeeble/energy-positions-api:ref:refs/heads/main`,
+matches nothing, and the sign-in fails with `AADSTS700213`. That is how the first
+deploy failed, on 16 November 2026. For another repository, read the two ids from
+GitHub's API:
 
 ```
-az ad app federated-credential create --id <app id> --parameters "{\"name\":\"github-main\",\"issuer\":\"https://token.actions.githubusercontent.com\",\"subject\":\"repo:CliffordKeeble/energy-positions-api:ref:refs/heads/main\",\"audiences\":[\"api://AzureADTokenExchange\"]}"
+gh api repos/CliffordKeeble/energy-positions-api --jq "{repo: .id, owner: .owner.id}"
+```
+
+```
+az ad app federated-credential create --id <app id> --parameters "{\"name\":\"github-main-immutable\",\"issuer\":\"https://token.actions.githubusercontent.com\",\"subject\":\"repo:CliffordKeeble@7225368/energy-positions-api@1455871332:ref:refs/heads/main\",\"audiences\":[\"api://AzureADTokenExchange\"]}"
 ```
 
 The role: Contributor on the one resource group, and nothing wider:
